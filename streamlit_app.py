@@ -62,7 +62,7 @@ def load_bert_classifier():
 def load_prediction_models():
     with open("best_logistic_model.pkl", "rb") as file:
         logistic_model = pickle.load(file)
-    with open("best_random_forest_model.pkl", "rb") as file:
+    with open("best_forest_classifier.pkl", "rb") as file:
         random_forest_model = pickle.load(file)
     with open("label_encoder.pkl", "rb") as file:
         label_encoder = pickle.load(file)
