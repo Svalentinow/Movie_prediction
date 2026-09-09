@@ -9,6 +9,8 @@ from huggingface_hub import hf_hub_download
 from torch import nn
 from transformers import AutoTokenizer, AutoModel, BertConfig, BertModel
 
+st.set_page_config(page_title="Movie Genre Predictor", page_icon="🎬")
+
 st.markdown(
     """
     <style>
@@ -93,7 +95,7 @@ def predict_single_text(text, model, tokenizer, max_len=400):
 
 st.title("🎈 Movie Genre Predictor")
 
-txt = st.text_area('Paste the movie plot summary to get single-genre predictions:',
+txt = st.text_area('Paste the movie plot summary to get single-genre prediction:',
                        placeholder="...", height=140)
 
 if st.button('Submit'):
