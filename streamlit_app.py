@@ -9,6 +9,17 @@ from huggingface_hub import hf_hub_download
 from torch import nn
 from transformers import AutoTokenizer, AutoModel, BertConfig, BertModel
 
+st.markdown(
+    """
+    <style>
+    .stApp {
+        background-color: #6B214F;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 
 class BertClassifier(nn.Module):
     def __init__(self, n_classes):
@@ -46,12 +57,14 @@ def load_bert_classifier():
 
 
 @st.cache_resource
-def load_prediction_artifacts():
+def load_prediction_models():
     with open("best_logistic_model.pkl", "rb") as file:
         logistic_model = pickle.load(file)
+    with open("best_random_forest_model.pkl", "rb") as file:
+        random_forest_model = pickle.load(file)
     with open("label_encoder.pkl", "rb") as file:
         label_encoder = pickle.load(file)
-    return logistic_model, label_encoder
+    return logistic_model, random_forest_model, label_encoder
 
 
 def get_embedding(text, tokenizer, model):
@@ -78,24 +91,26 @@ def predict_single_text(text, model, tokenizer, max_len=400):
         )
     return torch.argmax(outputs, dim=1).item()
 
-st.title("🎈 My new app")
-st.write(
-    "Let's start building! For help and inspiration, head over to [docs.streamlit.io](https://docs.streamlit.io/)."
-)
-txt = st.text_area('movie plot summary:',
+st.title("🎈 Movie Genre Predictor")
+
+txt = st.text_area('Paste the movie plot summary to get single-genre predictions:',
                        placeholder="...", height=140)
 
 if st.button('Submit'):
-    st.write('You entered:')
+    
     tokenizer, modernbert = load_modernbert()
     bert_tokenizer, bert_model = load_bert_classifier()
-    logistic_model, label_encoder = load_prediction_artifacts()
+    logistic_model, random_forest_model, label_encoder = load_prediction_models()
 
     new_embeddings = get_embedding(txt, tokenizer, modernbert)
     X_new = new_embeddings.reshape(1, -1)
-    predicted_label = logistic_model.predict(X_new)
-    predicted_genre = label_encoder.inverse_transform(predicted_label)
-    st.write(f"Predicted Genre: {predicted_genre[0]}")
+    Logistic_label = logistic_model.predict(X_new)
+    Logistic_predicted_genre = label_encoder.inverse_transform(Logistic_label)
+    st.write(f"Predicted Logistic Regression Genre: {Logistic_predicted_genre[0]}")
+
+    random_forest_label = random_forest_model.predict(X_new)
+    random_forest_genre = label_encoder.inverse_transform(random_forest_label)
+    st.write(f"Predicted Random Forest Genre: {random_forest_genre[0]}")
 
     bert_label = predict_single_text(txt, bert_model, bert_tokenizer)
     bert_genre = label_encoder.inverse_transform([bert_label])[0]
