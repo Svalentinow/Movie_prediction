@@ -128,17 +128,14 @@ def load_bert_commercial_success_classifier():
     model.load_state_dict(checkpoint["model_state_dict"])
 
     budget_scaler = StandardScaler()
-    budget_scaler.mean_ = np.asarray(checkpoint["scaler_mean"])
-    budget_scaler.scale_ = np.asarray(checkpoint["scaler_scale"])
+    budget_scaler.mean_ = checkpoint["budget_scaler_mean"]
+    budget_scaler.scale_ = checkpoint["budget_scaler_scale"]
     budget_scaler.var_ = budget_scaler.scale_ ** 2
     budget_scaler.n_features_in_ = budget_scaler.mean_.shape[0]
-    class_labels = checkpoint.get(
-        "class_labels",
-        {0: "Class 0", 1: "Class 1"},
-    )
+    class_names = checkpoint["class_names"]
 
     model.eval()
-    return tokenizer, model, budget_scaler, class_labels
+    return tokenizer, model, budget_scaler, class_names
 def predict_commercial_success(text, budget, model, tokenizer, budget_scaler, max_len=400):
     inputs = tokenizer(
         text,
@@ -210,7 +207,7 @@ with commercial_tab:
             key="commercial_text",
         )
     if st.button("Predict commercial success", key="commercial_button"):
-        bert_tokenizer, commercial_model, budget_scaler, class_labels = (
+        bert_tokenizer, commercial_model, budget_scaler, class_names = (
             load_bert_commercial_success_classifier()
         )
         commercial_label = predict_commercial_success(
@@ -222,7 +219,7 @@ with commercial_tab:
         )
         st.write(
             f"Commercial success prediction: "
-            f"{class_labels.get(commercial_label, f'Class {commercial_label}')}"
+            f"{class_names[commercial_label]}"
         )
 
 
