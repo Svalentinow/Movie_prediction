@@ -1,25 +1,9 @@
-# 🎈 Blank app template
+links to the bert classifiers used for the app. Hosted on hugging face
 
-A simple Streamlit app template for you to modify!
+Bert classifier for predicting 10 label genres using only plot summary
+https://huggingface.co/Svalent/bert-classifier-movie-genre
 
-[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://blank-app-template.streamlit.app/)
+Bert classifier for predicting commercial sucess using plot summary and budget
+https://huggingface.co/Svalent/bert_commercial_success_classifier
 
-### How to run it on your own machine
 
-Prerequisite: install `uv` if you don't already have it.
-
-```
-$ curl -LsSf https://astral.sh/uv/install.sh | sh
-```
-
-1. Sync the dependencies
-
-   ```
-   $ uv sync
-   ```
-
-2. Run the app
-
-   ```
-   $ uv run streamlit run streamlit_app.py
-   ```
