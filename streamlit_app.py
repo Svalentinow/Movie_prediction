@@ -2,7 +2,7 @@ import streamlit as st
 import pickle
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import LabelEncoder, StandardScaler
 import transformers
 import torch
 from huggingface_hub import hf_hub_download
@@ -26,7 +26,7 @@ st.markdown(
 class BertClassifier(nn.Module):
     def __init__(self, n_classes):
         super().__init__()
-        self.bert = BertModel(BertConfig())
+        self.bert = BertModel.from_pretrained("bert-base-uncased")
         self.drop = nn.Dropout(p=0.3)
         self.out = nn.Linear(self.bert.config.hidden_size, n_classes)
 
@@ -44,8 +44,13 @@ def load_modernbert():
 
 
 @st.cache_resource
+def load_bert_tokenizer():
+    return AutoTokenizer.from_pretrained("bert-base-uncased")
+
+
+@st.cache_resource
 def load_bert_classifier():
-    tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
+    tokenizer = load_bert_tokenizer()
     model = BertClassifier(n_classes=10)
     model_path = hf_hub_download(
         repo_id="Svalent/bert-classifier-movie-genre",
@@ -93,29 +98,131 @@ def predict_single_text(text, model, tokenizer, max_len=400):
         )
     return torch.argmax(outputs, dim=1).item()
 
+class BertCommercialSuccessClassifier(nn.Module):
+    def __init__(self, n_classes):
+        super().__init__()
+        self.bert = BertModel.from_pretrained("bert-base-uncased")
+        self.drop = nn.Dropout(p=0.3)
+        self.out = nn.Linear(self.bert.config.hidden_size + 1, n_classes)
+
+    def forward(self, input_ids, attention_mask, budget):
+        outputs = self.bert(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+        )
+        pooled_output = self.drop(outputs.pooler_output)
+        budget_feature = budget.float().view(-1, 1)
+        combined = torch.cat((pooled_output, budget_feature), dim=1)
+        return self.out(combined)
+
+
+@st.cache_resource
+def load_bert_commercial_success_classifier():
+    tokenizer = load_bert_tokenizer()
+    model = BertCommercialSuccessClassifier(n_classes=2)
+    model_path = hf_hub_download(
+        repo_id="Svalent/bert_commercial_success_classifier",
+        filename="bert_commercial_success_classifier.pth",
+    )
+    checkpoint = torch.load(model_path, map_location="cpu", weights_only=False)
+    model.load_state_dict(checkpoint["model_state_dict"])
+
+    budget_scaler = StandardScaler()
+    budget_scaler.mean_ = np.asarray(checkpoint["scaler_mean"])
+    budget_scaler.scale_ = np.asarray(checkpoint["scaler_scale"])
+    budget_scaler.var_ = budget_scaler.scale_ ** 2
+    budget_scaler.n_features_in_ = budget_scaler.mean_.shape[0]
+    class_labels = checkpoint.get(
+        "class_labels",
+        {0: "Class 0", 1: "Class 1"},
+    )
+
+    model.eval()
+    return tokenizer, model, budget_scaler, class_labels
+def predict_commercial_success(text, budget, model, tokenizer, budget_scaler, max_len=400):
+    inputs = tokenizer(
+        text,
+        add_special_tokens=True,
+        max_length=max_len,
+        padding="max_length",
+        truncation=True,
+        return_tensors="pt",
+    )
+    scaled_budget = budget_scaler.transform(
+        np.asarray([[budget]], dtype=np.float32)
+    )
+    budget_tensor = torch.tensor(scaled_budget, dtype=torch.float32)
+    device = next(model.parameters()).device
+    with torch.no_grad():
+        outputs = model(
+            input_ids=inputs["input_ids"].to(device),
+            attention_mask=inputs["attention_mask"].to(device),
+            budget=budget_tensor.to(device),
+        )
+    return torch.argmax(outputs, dim=1).item()
+
 st.title("🎈 Movie Genre Predictor")
 
-txt = st.text_area('Paste the movie plot summary to get single-genre prediction:',
-                       placeholder="...", height=140)
+genre_tab, commercial_tab = st.tabs(["Genre prediction", "Commercial success"])
 
-if st.button('Submit'):
+with genre_tab:
+    genre_text = st.text_area(
+        "Paste the movie plot summary to get a genre prediction:",
+        placeholder="...",
+        height=140,
+        key="genre_text",
+    )
+
+    if st.button("Predict genre", key="genre_button"):
+        tokenizer, modernbert = load_modernbert()
+        bert_tokenizer, bert_model = load_bert_classifier()
+        logistic_model, random_forest_model, label_encoder = load_prediction_models()
+
+        new_embeddings = get_embedding(genre_text, tokenizer, modernbert)
+        X_new = new_embeddings.reshape(1, -1)
+        logistic_label = logistic_model.predict(X_new)
+        logistic_genre = label_encoder.inverse_transform(logistic_label)
+        st.write(f"Predicted Logistic Regression Genre: {logistic_genre[0]}")
+
+        random_forest_label = random_forest_model.predict(X_new)
+        random_forest_genre = label_encoder.inverse_transform(random_forest_label)
+        st.write(f"Predicted Random Forest Genre: {random_forest_genre[0]}")
+
+        bert_label = predict_single_text(genre_text, bert_model, bert_tokenizer)
+        bert_genre = label_encoder.inverse_transform([bert_label])[0]
+        st.write(f"BERT predicted genre: {bert_genre}")
+
+with commercial_tab:
     
-    tokenizer, modernbert = load_modernbert()
-    bert_tokenizer, bert_model = load_bert_classifier()
-    logistic_model, random_forest_model, label_encoder = load_prediction_models()
+    commercial_budget = st.number_input(
+        "Movie budget",
+        min_value=0.0,
+        value=0.0,
+        step=1_000_000.0,
+        format="%.0f",
+        help="Enter the movie budget using USD currency.",
+    )
 
-    new_embeddings = get_embedding(txt, tokenizer, modernbert)
-    X_new = new_embeddings.reshape(1, -1)
-    Logistic_label = logistic_model.predict(X_new)
-    Logistic_predicted_genre = label_encoder.inverse_transform(Logistic_label)
-    st.write(f"Predicted Logistic Regression Genre: {Logistic_predicted_genre[0]}")
-
-    random_forest_label = random_forest_model.predict(X_new)
-    random_forest_genre = label_encoder.inverse_transform(random_forest_label)
-    st.write(f"Predicted Random Forest Genre: {random_forest_genre[0]}")
-
-    bert_label = predict_single_text(txt, bert_model, bert_tokenizer)
-    bert_genre = label_encoder.inverse_transform([bert_label])[0]
-    st.write(f"BERT predicted genre: {bert_genre}")
+    commercial_text = st.text_area(
+            "Paste the movie plot summary and budget to predict commercial success:",
+            placeholder="...",
+            height=140,
+            key="commercial_text",
+        )
+    if st.button("Predict commercial success", key="commercial_button"):
+        bert_tokenizer, commercial_model, budget_scaler, class_labels = (
+            load_bert_commercial_success_classifier()
+        )
+        commercial_label = predict_commercial_success(
+            commercial_text,
+            commercial_budget,
+            commercial_model,
+            bert_tokenizer,
+            budget_scaler,
+        )
+        st.write(
+            f"Commercial success prediction: "
+            f"{class_labels.get(commercial_label, f'Class {commercial_label}')}"
+        )
 
 
